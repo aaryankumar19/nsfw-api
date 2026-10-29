@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "version": 1,
+  "domains": [
+    "another-nsfw.example",
+    "example-nsfw.com",
+    "restricted-preview.test",
+    "sample-adult-content.org",
+    "test-explicit-media.net"
+  ]
+}

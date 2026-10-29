@@ -1,0 +1,33 @@
+# ==============================================================================
+# FILE: .gitignore
+# DESCRIPTION: Git ignore specifications for the nsfw-api repository.
+# 
+# WHAT THIS FILE DOES:
+# - Excludes local development secrets (.env).
+# - Excludes Cloudflare Wrangler state and local persistence caches (.wrangler/).
+# - Excludes Python bytecode and caches (__pycache__/).
+# - Excludes node_modules and OS-specific files.
+# ==============================================================================
+
+# Environment files containing secrets
+.env
+.env.local
+.env.*.local
+
+# Cloudflare Pages / Wrangler local state
+.wrangler/
+node_modules/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# OS and Editor metadata
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/

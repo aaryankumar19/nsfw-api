@@ -1,0 +1,19 @@
+# ==============================================================================
+# FILE: data/domains.txt
+# DESCRIPTION: Editable source of truth for the NSFW blocklist.
+# 
+# WHAT THIS FILE DOES:
+# - Holds the raw list of domains to be blocked by the Mindful Android app.
+# - One domain per line.
+# - Lines starting with '#' and blank lines are ignored as comments.
+# - Automatically cleaned, normalized, deduplicated, and sorted by scripts/build.py.
+# - URLs (e.g. https://site.com/path), ports (:8080), and queries are stripped
+#   to hostnames during the build process.
+# ==============================================================================
+
+# Illustrative seed domains (placeholders - replace or append with your curated domains)
+another-nsfw.example
+example-nsfw.com
+restricted-preview.test
+sample-adult-content.org
+test-explicit-media.net

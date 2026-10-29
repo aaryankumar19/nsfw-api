@@ -1,0 +1,25 @@
+{
+  "name": "nsfw-blocklist-api",
+  "version": "1.0.0",
+  "description": "Static versioned NSFW blocklist API for Cloudflare Pages with API key authentication middleware.",
+  "private": true,
+  "scripts": {
+    "build": "python3 scripts/build.py",
+    "build:bump": "python3 scripts/build.py --bump",
+    "build:dry": "python3 scripts/build.py --dry-run",
+    "dev": "wrangler pages dev public --binding API_SECRET_KEY=dev-secret-key-12345 --port 8788",
+    "test": "bash scripts/test_api.sh"
+  },
+  "keywords": [
+    "nsfw-blocklist",
+    "cloudflare-pages",
+    "static-api",
+    "workmanager",
+    "mindful"
+  ],
+  "author": "Mindful App Team",
+  "license": "MIT",
+  "devDependencies": {
+    "wrangler": "^4.155.0"
+  }
+}
