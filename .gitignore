@@ -31,3 +31,10 @@ Thumbs.db
 *.swo
 .idea/
 .vscode/
+
+# Large uncompressed source file (kept compressed as data/domains.txt.gz for Cloudflare Pages 25MB limit)
+data/domains.txt
+public/api/v1/releases/*.json
+!public/api/v1/releases/*.json.gz
+public/api/v1/domains.json
+

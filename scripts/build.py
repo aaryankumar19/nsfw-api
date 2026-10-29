@@ -30,6 +30,7 @@ USAGE:
 
 import argparse
 import datetime
+import gzip
 import hashlib
 import json
 import os
@@ -140,18 +141,33 @@ def compute_sha256_bytes(data_bytes: bytes) -> str:
 
 def process_domains_file(domains_path: Path) -> tuple[list[str], int, int, list[str]]:
     """
-    Reads domains.txt, sanitizes, deduplicates, and validates.
+    Reads domains.txt (or domains.txt.gz), sanitizes, deduplicates, and validates.
     Returns: (sorted_domains, total_raw_lines, duplicates_count, warnings)
     """
-    if not domains_path.is_file():
-        raise FileNotFoundError(f"Source file not found at: {domains_path}")
+    raw_domains_txt = domains_path.with_name("domains.txt")
+    gz_path = domains_path.with_name("domains.txt.gz")
+
+    if raw_domains_txt.is_file():
+        # If uncompressed exists and is newer than .gz, keep .gz in sync
+        if not gz_path.is_file() or raw_domains_txt.stat().st_mtime > gz_path.stat().st_mtime:
+            print("[*] Updating data/domains.txt.gz (Cloudflare Pages 25MB compliance)...")
+            with open(raw_domains_txt, "rb") as f_in, gzip.open(gz_path, "wb", compresslevel=9) as f_out:
+                f_out.write(f_in.read())
+        domains_source = raw_domains_txt
+    elif gz_path.is_file():
+        domains_source = gz_path
+    else:
+        raise FileNotFoundError(f"Source file not found at: {domains_path} or {gz_path}")
 
     raw_count = 0
     valid_domains: set[str] = set()
     duplicates_count = 0
     warnings: list[str] = []
 
-    with open(domains_path, "r", encoding="utf-8") as f:
+    is_gz = domains_source.name.endswith(".gz")
+    open_ctx = gzip.open(domains_source, "rt", encoding="utf-8") if is_gz else open(domains_source, "r", encoding="utf-8")
+
+    with open_ctx as f:
         for line_num, line in enumerate(f, start=1):
             raw = line.strip()
             if not raw or raw.startswith("#"):
@@ -191,6 +207,9 @@ def build_version_payload(
     domains_url: str,
     sha256_hash: str,
     updated_at: str,
+    uncompressed_sha256: str | None = None,
+    total_domains: int | None = None,
+    size_bytes: int | None = None,
 ) -> bytes:
     """Creates the JSON byte payload for version.json."""
     payload = {
@@ -200,6 +219,12 @@ def build_version_payload(
         "sha256": sha256_hash,
         "updated_at": updated_at,
     }
+    if uncompressed_sha256:
+        payload["uncompressed_sha256"] = uncompressed_sha256
+    if total_domains is not None:
+        payload["total_domains"] = total_domains
+    if size_bytes is not None:
+        payload["size_bytes"] = size_bytes
     formatted = json.dumps(payload, indent=2) + "\n"
     return formatted.encode("utf-8")
 
@@ -212,9 +237,14 @@ def perform_rollback(
     dry_run: bool,
 ) -> None:
     """Rolls back version.json to point to an existing immutable release."""
-    release_file = releases_dir / f"{target_version}.json"
+    release_file = releases_dir / f"{target_version}.json.gz"
+    is_gz = True
     if not release_file.is_file():
-        print(f"[ERROR] Cannot rollback to version {target_version}: file not found at {release_file}")
+        release_file = releases_dir / f"{target_version}.json"
+        is_gz = False
+
+    if not release_file.is_file():
+        print(f"[ERROR] Cannot rollback to version {target_version}: file not found at {releases_dir / f'{target_version}.json[.gz]'}")
         sys.exit(1)
 
     with open(release_file, "rb") as f:
@@ -226,12 +256,14 @@ def perform_rollback(
     metadata = load_metadata(meta_path)
     schema_version = metadata.get("schema_version", 1)
 
+    domains_url = f"/api/v1/releases/{target_version}.json.gz" if is_gz else f"/api/v1/releases/{target_version}.json"
     version_bytes = build_version_payload(
         schema_version=schema_version,
         domains_version=target_version,
-        domains_url=f"/api/v1/releases/{target_version}.json",
+        domains_url=domains_url,
         sha256_hash=sha256_hash,
         updated_at=now_utc,
+        size_bytes=len(release_bytes),
     )
 
     print("=" * 60)
@@ -252,7 +284,8 @@ def perform_rollback(
     print(f"[✓] Updated: {version_json_path}")
 
     # 2. Update domains.json convenience copy
-    domains_json_path = public_api_dir / "domains.json"
+    domains_copy_filename = "domains.json.gz" if is_gz else "domains.json"
+    domains_json_path = public_api_dir / domains_copy_filename
     with open(domains_json_path, "wb") as f:
         f.write(release_bytes)
     print(f"[✓] Updated convenience copy: {domains_json_path}")
@@ -357,23 +390,46 @@ def main():
 
     # Generate release JSON bytes
     release_bytes = build_release_payload(schema_version, target_version, domains)
-    release_sha256 = compute_sha256_bytes(release_bytes)
+    uncompressed_sha256 = compute_sha256_bytes(release_bytes)
+    uncompressed_len = len(release_bytes)
+
+    # Cloudflare Pages 25 MiB single-file limit compliance
+    # If the uncompressed JSON exceeds 20 MiB, store and serve pre-compressed .json.gz release
+    use_gzip_release = uncompressed_len > 20 * 1024 * 1024
+
+    if use_gzip_release:
+        release_payload = gzip.compress(release_bytes, compresslevel=6)
+        release_sha256 = compute_sha256_bytes(release_payload)
+        domains_url = f"/api/v1/releases/{target_version}.json.gz"
+        release_filename = f"{target_version}.json.gz"
+        domains_copy_filename = "domains.json.gz"
+    else:
+        release_payload = release_bytes
+        release_sha256 = uncompressed_sha256
+        domains_url = f"/api/v1/releases/{target_version}.json"
+        release_filename = f"{target_version}.json"
+        domains_copy_filename = "domains.json"
+
     now_utc = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     # Generate version metadata JSON bytes
-    domains_url = f"/api/v1/releases/{target_version}.json"
     version_bytes = build_version_payload(
         schema_version=schema_version,
         domains_version=target_version,
         domains_url=domains_url,
         sha256_hash=release_sha256,
         updated_at=now_utc,
+        uncompressed_sha256=uncompressed_sha256 if use_gzip_release else None,
+        total_domains=len(domains),
+        size_bytes=len(release_payload),
     )
 
     print("\n[*] Release Checksum:")
     print(f"    SHA-256: {release_sha256}")
     print(f"    URL:     {domains_url}")
-    print(f"    Payload: {len(release_bytes)} bytes")
+    print(f"    Payload: {len(release_payload)} bytes ({'compressed .gz' if use_gzip_release else 'uncompressed'})")
+    if use_gzip_release:
+        print(f"    Uncompressed: {uncompressed_len} bytes (SHA-256: {uncompressed_sha256})")
 
     if args.dry_run:
         print("\n[DRY-RUN] Execution completed. No files were written to disk.")
@@ -383,11 +439,11 @@ def main():
     releases_dir.mkdir(parents=True, exist_ok=True)
 
     # Check for release immutability
-    target_release_path = releases_dir / f"{target_version}.json"
+    target_release_path = releases_dir / release_filename
     if target_release_path.is_file():
         with open(target_release_path, "rb") as f:
             existing_bytes = f.read()
-        if existing_bytes == release_bytes:
+        if existing_bytes == release_payload:
             print(f"[*] Note: {target_release_path.name} already exists with identical content.")
         elif not args.force:
             print(f"\n[ERROR] Immutable Release Protection:")
@@ -400,14 +456,27 @@ def main():
 
     # 1. Write the immutable release file
     with open(target_release_path, "wb") as f:
-        f.write(release_bytes)
+        f.write(release_payload)
     print(f"[✓] Written release snapshot: {target_release_path}")
 
-    # 2. Write the latest convenience copy (domains.json)
-    domains_json_path = public_api_dir / "domains.json"
-    with open(domains_json_path, "wb") as f:
-        f.write(release_bytes)
-    print(f"[✓] Written latest copy:      {domains_json_path}")
+    # Remove any obsolete uncompressed file if switching to gzip
+    if use_gzip_release:
+        obsolete_uncompressed = releases_dir / f"{target_version}.json"
+        if obsolete_uncompressed.is_file():
+            obsolete_uncompressed.unlink()
+            print(f"[✓] Cleaned up oversized file: {obsolete_uncompressed.name} (exceeded 25MB Pages limit)")
+
+    # 2. Write the latest convenience copy
+    domains_copy_path = public_api_dir / domains_copy_filename
+    with open(domains_copy_path, "wb") as f:
+        f.write(release_payload)
+    print(f"[✓] Written latest copy:      {domains_copy_path}")
+
+    if use_gzip_release:
+        obsolete_domains_copy = public_api_dir / "domains.json"
+        if obsolete_domains_copy.is_file():
+            obsolete_domains_copy.unlink()
+            print(f"[✓] Cleaned up oversized file: {obsolete_domains_copy.name} (exceeded 25MB Pages limit)")
 
     # 3. Write version.json
     version_json_path = public_api_dir / "version.json"

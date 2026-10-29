@@ -110,37 +110,25 @@ curl -H "X-API-Key: your-secret-key" https://your-project.pages.dev/api/v1/versi
 {
   "schema_version": 1,
   "domains_version": 1,
-  "domains_url": "/api/v1/releases/1.json",
-  "sha256": "<release-sha256-hash>",
-  "updated_at": "2026-10-29T03:24:07Z"
+  "domains_url": "/api/v1/releases/1.json.gz",
+  "sha256": "70da8a1f782f7481b02c8466b633fca3744b6b03cbbfbd75366c0e1a0daf2613",
+  "updated_at": "2026-10-29T03:43:30Z",
+  "uncompressed_sha256": "39aeb49ad52e260eec92f092a7ab0e1062ee14a2935cae13f4448cdb4b233995",
+  "total_domains": 3622947,
+  "size_bytes": 16557275
 }
 ```
 
 ---
 
 ### Endpoint 2: Immutable Versioned Release
-`GET /api/v1/releases/{version}.json`
+`GET /api/v1/releases/{version}.json.gz`
 
-Returns the complete domain list for release `{version}`. Once deployed, release snapshots are **immutable** and never modified.
+Returns the pre-compressed gzip payload for release `{version}` (16.5 MB, containing 3.62M+ domains). Complying with Cloudflare Pages' 25 MiB asset limit, releases over 20 MB are served as immutable `.json.gz` streams. Requests to `/api/v1/releases/{version}.json` automatically redirect (HTTP 307) to the `.gz` asset.
 
 **Request:**
 ```bash
-curl -H "Authorization: Bearer your-secret-key" https://your-project.pages.dev/api/v1/releases/1.json
-```
-
-**Response (HTTP 200 OK):**
-```json
-{
-  "schema_version": 1,
-  "version": 1,
-  "domains": [
-    "another-nsfw.example",
-    "example-nsfw.com",
-    "restricted-preview.test",
-    "sample-adult-content.org",
-    "test-explicit-media.net"
-  ]
-}
+curl -H "Authorization: Bearer your-secret-key" https://your-project.pages.dev/api/v1/releases/1.json.gz | gzip -d | head -n 25
 ```
 
 ---
@@ -265,6 +253,7 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
+import java.util.zip.GZIPInputStream
 
 class BlocklistSyncWorker(
     private val context: Context,
@@ -303,8 +292,8 @@ class BlocklistSyncWorker(
                 return Result.success()
             }
 
-            // 2. Download release into a temporary file
-            val tempFile = File(context.cacheDir, "release_${remoteVersion}.tmp")
+            // 2. Download compressed release (.gz) into a temporary file
+            val tempGzFile = File(context.cacheDir, "release_${remoteVersion}.tmp.gz")
             val releaseRequest = Request.Builder()
                 .url("$BASE_URL$releaseUrl")
                 .header("X-API-Key", API_SECRET_KEY)
@@ -314,34 +303,34 @@ class BlocklistSyncWorker(
             if (!releaseResponse.isSuccessful) return Result.retry()
 
             val releaseBytes = releaseResponse.body!!.bytes()
-            FileOutputStream(tempFile).use { it.write(releaseBytes) }
+            FileOutputStream(tempGzFile).use { it.write(releaseBytes) }
 
-            // 3. Compute and verify SHA-256 checksum
+            // 3. Compute and verify SHA-256 checksum over the downloaded payload
             val digest = MessageDigest.getInstance("SHA-256")
             val calculatedSha256 = digest.digest(releaseBytes).joinToString("") { "%02x".format(it) }
 
             if (!calculatedSha256.equals(expectedSha256, ignoreCase = true)) {
-                tempFile.delete()
-                return Result.retry() // Checksum mismatch, do not activate
+                tempGzFile.delete()
+                return Result.retry() // Checksum mismatch, reject corrupt download
             }
 
-            // 4. Validate JSON structure before activating
-            val releaseJson = JSONObject(String(releaseBytes, Charsets.UTF_8))
-            val domainsArray = releaseJson.getJSONArray("domains")
-            if (domainsArray.length() == 0) {
-                tempFile.delete()
-                return Result.failure()
+            // 4. Stream-decompress GZIP payload directly to active file (prevents OutOfMemory)
+            val targetFile = getActiveBlocklistFile()
+            val tempUncompressedFile = File(context.cacheDir, "release_${remoteVersion}.uncompressed.tmp")
+            
+            GZIPInputStream(tempGzFile.inputStream()).use { gzipIn ->
+                FileOutputStream(tempUncompressedFile).use { fileOut ->
+                    gzipIn.copyTo(fileOut)
+                }
             }
+            tempGzFile.delete()
 
             // 5. Atomically replace the active blocklist file
-            val targetFile = getActiveBlocklistFile()
-            if (tempFile.renameTo(targetFile)) {
-                prefs.edit().putInt("local_domains_version", remoteVersion).apply()
-            } else {
+            if (!tempUncompressedFile.renameTo(targetFile)) {
                 targetFile.delete()
-                tempFile.renameTo(targetFile)
-                prefs.edit().putInt("local_domains_version", remoteVersion).apply()
+                tempUncompressedFile.renameTo(targetFile)
             }
+            prefs.edit().putInt("local_domains_version", remoteVersion).apply()
 
             Result.success()
         } catch (e: Exception) {

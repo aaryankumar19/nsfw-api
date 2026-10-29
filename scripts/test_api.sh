@@ -125,7 +125,7 @@ fi
 
 echo ""
 echo "--- [5/8] Test: Valid Query Parameter Auth on /api/v1/domains.json ---"
-HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+HTTP_STATUS=$(curl -s -L -o /dev/null -w "%{http_code}" \
   "${BASE_URL}/api/v1/domains.json?key=${SECRET}")
 if [ "$HTTP_STATUS" -eq 200 ]; then
   echo "  ✓ PASS: HTTP 200 OK via ?key= parameter."

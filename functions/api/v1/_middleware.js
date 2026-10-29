@@ -192,7 +192,15 @@ export async function onRequest(context) {
   }
 
   // 5. Forward to static asset handler
-  const response = await next();
+  let response = await next();
+
+  // If the uncompressed .json asset is not found (because files > 25MB are stored as .gz),
+  // redirect transparently to the corresponding .gz snapshot asset.
+  if (response.status === 404 && url.pathname.endsWith('.json')) {
+    const gzUrl = new URL(request.url);
+    gzUrl.pathname += '.gz';
+    return Response.redirect(gzUrl.toString(), 307);
+  }
 
   // 6. Augment response with security, CORS, and tailored caching headers
   const newHeaders = new Headers(response.headers);
@@ -200,6 +208,9 @@ export async function onRequest(context) {
     newHeaders.set(key, value);
   }
   newHeaders.set('Cache-Control', getCacheControlHeader(url.pathname));
+  if (url.pathname.endsWith('.gz')) {
+    newHeaders.set('Content-Type', 'application/gzip');
+  }
 
   return new Response(response.body, {
     status: response.status,
