@@ -1,5 +1,5 @@
 {
   "_comment": "Tracks the current active schema version and latest domains release version.",
   "schema_version": 1,
-  "domains_version": 1
+  "domains_version": 2
 }

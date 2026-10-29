@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "domains_version": 1,
-  "domains_url": "/api/v1/releases/1.json.gz",
-  "sha256": "70da8a1f782f7481b02c8466b633fca3744b6b03cbbfbd75366c0e1a0daf2613",
-  "updated_at": "2026-10-29T03:50:22Z",
-  "uncompressed_sha256": "39aeb49ad52e260eec92f092a7ab0e1062ee14a2935cae13f4448cdb4b233995",
-  "total_domains": 3622947,
-  "size_bytes": 16557275
+  "domains_version": 2,
+  "domains_url": "/api/v1/releases/2.json.gz",
+  "sha256": "6d79abd76c8c701a0e02d5df0c63778d790ac2d20ca177ff6cf5a73a25377974",
+  "updated_at": "2026-10-29T11:47:03Z",
+  "uncompressed_sha256": "e66cd0c8377e9eb8551d6cc8d55a6f60504d0808cc73c8c77eadc26d1c84ad7b",
+  "total_domains": 3622945,
+  "size_bytes": 16557265
 }
