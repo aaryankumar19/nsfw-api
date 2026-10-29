@@ -101,11 +101,16 @@ else
   exit 1
 fi
 
+ACTIVE_RELEASE_URL=$(echo "$VERSION_BODY" | grep -o '"domains_url": *"[^"]*"' | cut -d'"' -f4)
+if [ -z "$ACTIVE_RELEASE_URL" ]; then
+  ACTIVE_RELEASE_URL="/api/v1/releases/1.json"
+fi
+
 echo ""
-echo "--- [4/8] Test: Valid X-API-Key Header on /api/v1/releases/2.json ---"
+echo "--- [4/8] Test: Valid X-API-Key Header on ${ACTIVE_RELEASE_URL} ---"
 RELEASE_RESPONSE=$(curl -s -w "\n%{http_code}" \
   -H "X-API-Key: ${SECRET}" \
-  "${BASE_URL}/api/v1/releases/2.json")
+  "${BASE_URL}${ACTIVE_RELEASE_URL}")
 HTTP_STATUS=$(echo "$RELEASE_RESPONSE" | tail -n 1)
 RELEASE_BODY=$(echo "$RELEASE_RESPONSE" | head -n -1)
 
@@ -132,7 +137,7 @@ fi
 echo ""
 echo "--- [6/8] Test: SHA-256 Checksum Verification ---"
 EXPECTED_SHA256=$(echo "$VERSION_BODY" | grep -o '"sha256": *"[^"]*"' | cut -d'"' -f4)
-ACTUAL_SHA256=$(curl -s -H "X-API-Key: ${SECRET}" "${BASE_URL}/api/v1/releases/2.json" | sha256sum | awk '{print $1}')
+ACTUAL_SHA256=$(curl -s -H "X-API-Key: ${SECRET}" "${BASE_URL}${ACTIVE_RELEASE_URL}" | sha256sum | awk '{print $1}')
 echo "  Reported in version.json: ${EXPECTED_SHA256}"
 echo "  Calculated on payload:    ${ACTUAL_SHA256}"
 if [ "$EXPECTED_SHA256" = "$ACTUAL_SHA256" ]; then
@@ -144,7 +149,7 @@ fi
 
 echo ""
 echo "--- [7/8] Test: Cache-Control & Security Headers ---"
-HEADERS=$(curl -s -I -H "X-API-Key: ${SECRET}" "${BASE_URL}/api/v1/releases/2.json")
+HEADERS=$(curl -s -I -H "X-API-Key: ${SECRET}" "${BASE_URL}${ACTIVE_RELEASE_URL}")
 if echo "$HEADERS" | grep -i "cache-control:.*immutable" > /dev/null; then
   echo "  ✓ PASS: Immutable cache header present on release snapshot."
 else

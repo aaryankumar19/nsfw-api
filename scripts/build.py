@@ -68,8 +68,10 @@ def normalize_domain(raw_line: str) -> tuple[str | None, str | None]:
         except Exception:
             pass
 
-    # Strip leading wildcard (e.g. *.domain.com -> domain.com)
+    # Check for and preserve leading wildcard (e.g. *.domain.com)
+    has_wildcard = False
     if line.startswith("*."):
+        has_wildcard = True
         line = line[2:]
 
     # Strip port numbers (e.g. domain.com:8080)
@@ -109,7 +111,7 @@ def normalize_domain(raw_line: str) -> tuple[str | None, str | None]:
     if not DOMAIN_REGEX.match(domain):
         return None, "Does not match standard hostname syntax"
 
-    return domain, None
+    return f"*.{domain}" if has_wildcard else domain, None
 
 
 def load_metadata(meta_path: Path) -> dict:
@@ -178,8 +180,8 @@ def build_release_payload(schema_version: int, version: int, domains: list[str])
         "version": version,
         "domains": domains,
     }
-    # Deterministic formatting: 2 space indent, sorted keys, trailing newline
-    formatted = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+    # Deterministic compact formatting: avoids whitespace overhead and keeps payloads under Git's 100MB limit
+    formatted = json.dumps(payload, separators=(",", ":"), ensure_ascii=False) + "\n"
     return formatted.encode("utf-8")
 
 

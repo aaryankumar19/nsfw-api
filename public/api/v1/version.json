@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "domains_version": 2,
-  "domains_url": "/api/v1/releases/2.json",
-  "sha256": "ab8f46a013f4eee6cd1c316a45ff6f62985d011c05206efc55cbd6bddb6c5e94",
-  "updated_at": "2026-10-29T02:34:22Z"
+  "domains_version": 1,
+  "domains_url": "/api/v1/releases/1.json",
+  "sha256": "39aeb49ad52e260eec92f092a7ab0e1062ee14a2935cae13f4448cdb4b233995",
+  "updated_at": "2026-10-29T03:30:54Z"
 }

@@ -109,10 +109,10 @@ curl -H "X-API-Key: your-secret-key" https://your-project.pages.dev/api/v1/versi
 ```json
 {
   "schema_version": 1,
-  "domains_version": 2,
-  "domains_url": "/api/v1/releases/2.json",
-  "sha256": "ab8f46a013f4eee6cd1c316a45ff6f62985d011c05206efc55cbd6bddb6c5e94",
-  "updated_at": "2026-10-29T02:34:22Z"
+  "domains_version": 1,
+  "domains_url": "/api/v1/releases/1.json",
+  "sha256": "<release-sha256-hash>",
+  "updated_at": "2026-10-29T03:24:07Z"
 }
 ```
 
@@ -125,14 +125,14 @@ Returns the complete domain list for release `{version}`. Once deployed, release
 
 **Request:**
 ```bash
-curl -H "Authorization: Bearer your-secret-key" https://your-project.pages.dev/api/v1/releases/2.json
+curl -H "Authorization: Bearer your-secret-key" https://your-project.pages.dev/api/v1/releases/1.json
 ```
 
 **Response (HTTP 200 OK):**
 ```json
 {
   "schema_version": 1,
-  "version": 2,
+  "version": 1,
   "domains": [
     "another-nsfw.example",
     "example-nsfw.com",
@@ -161,6 +161,7 @@ curl "https://your-project.pages.dev/api/v1/domains.json?key=your-secret-key"
 
 ### Step 1: Update the Blocklist
 Edit `data/domains.txt` to add, update, or remove domains.
+- Supports both exact hostnames (`example.com`) and wildcard subdomains (`*.example.com`).
 - URLs (`https://site.com/path`), ports (`site.com:8080`), and queries are automatically stripped.
 - Comments starting with `#` and blank lines are ignored.
 
