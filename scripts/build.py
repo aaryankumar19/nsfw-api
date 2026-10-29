@@ -398,7 +398,8 @@ def main():
     use_gzip_release = uncompressed_len > 20 * 1024 * 1024
 
     if use_gzip_release:
-        release_payload = gzip.compress(release_bytes, compresslevel=6)
+        # Deterministic gzip compression (mtime=0 ensures identical byte-level reproducibility across environments)
+        release_payload = gzip.compress(release_bytes, compresslevel=6, mtime=0)
         release_sha256 = compute_sha256_bytes(release_payload)
         domains_url = f"/api/v1/releases/{target_version}.json.gz"
         release_filename = f"{target_version}.json.gz"
@@ -411,6 +412,36 @@ def main():
         domains_copy_filename = "domains.json"
 
     now_utc = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # Ensure output directories exist
+    releases_dir.mkdir(parents=True, exist_ok=True)
+
+    # Check for release immutability
+    target_release_path = releases_dir / release_filename
+    if target_release_path.is_file():
+        with open(target_release_path, "rb") as f:
+            existing_bytes = f.read()
+
+        is_identical = (existing_bytes == release_payload)
+        if not is_identical and use_gzip_release:
+            try:
+                # Compare the underlying uncompressed domain payload
+                is_identical = (gzip.decompress(existing_bytes) == release_bytes)
+            except Exception:
+                is_identical = False
+
+        if is_identical:
+            print(f"[*] Note: {target_release_path.name} already exists with identical content.")
+            release_payload = existing_bytes
+            release_sha256 = compute_sha256_bytes(existing_bytes)
+        elif not args.force:
+            print(f"\n[ERROR] Immutable Release Protection:")
+            print(f"        '{target_release_path}' already exists with different content!")
+            print(f"        To publish changes, please increment version with: python3 scripts/build.py --bump")
+            print(f"        Or if you explicitly intend to overwrite, pass: --force")
+            sys.exit(1)
+        else:
+            print(f"[!] Warning: Overwriting existing release {target_release_path.name} (--force enabled).")
 
     # Generate version metadata JSON bytes
     version_bytes = build_version_payload(
@@ -434,25 +465,6 @@ def main():
     if args.dry_run:
         print("\n[DRY-RUN] Execution completed. No files were written to disk.")
         return
-
-    # Ensure output directories exist
-    releases_dir.mkdir(parents=True, exist_ok=True)
-
-    # Check for release immutability
-    target_release_path = releases_dir / release_filename
-    if target_release_path.is_file():
-        with open(target_release_path, "rb") as f:
-            existing_bytes = f.read()
-        if existing_bytes == release_payload:
-            print(f"[*] Note: {target_release_path.name} already exists with identical content.")
-        elif not args.force:
-            print(f"\n[ERROR] Immutable Release Protection:")
-            print(f"        '{target_release_path}' already exists with different content!")
-            print(f"        To publish changes, please increment version with: python3 scripts/build.py --bump")
-            print(f"        Or if you explicitly intend to overwrite, pass: --force")
-            sys.exit(1)
-        else:
-            print(f"[!] Warning: Overwriting existing release {target_release_path.name} (--force enabled).")
 
     # 1. Write the immutable release file
     with open(target_release_path, "wb") as f:
